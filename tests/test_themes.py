@@ -1,5 +1,5 @@
-import json
 import os
+import sys
 from pathlib import Path
 import tempfile
 import unittest
@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import tomlkit
 
-from herdr_modus import Manager, THEMES, omarchy_variant, palette
+from herdr_modus import Manager, THEMES, omarchy_variant, palette, main
 
 
 class ConfigTests(unittest.TestCase):
@@ -101,34 +101,114 @@ rows = [["workspace"], [{token="agent", dim=false}]]
         self.manager.restore()
         self.assertEqual(tomlkit.parse(self.config.read_text()).unwrap(), tomlkit.parse(self.original).unwrap())
 
-    def active_omarchy_theme(self, mode=None):
+    def active_omarchy_theme(self, name):
         theme = self.root / "state/omarchy/current/theme"
         theme.mkdir(parents=True, exist_ok=True)
-        if mode:
-            (theme / "colors.toml").write_text(f'mode = "{mode}"\n')
+        (theme.parent / "theme.name").write_text(name + "\n")
         return theme
 
-    def test_omarchy_switches_by_mode_not_theme_name(self):
-        theme = self.active_omarchy_theme("light")
+    def test_omarchy_only_matches_exact_modus_names(self):
+        for name, expected in [(THEMES[0], THEMES[0]), (THEMES[1], THEMES[1]),
+                               ("catppuccin", None), ("modus-operandi-custom", None),
+                               ("modus-vivendi-tinted", None)]:
+            theme = self.active_omarchy_theme(name)
+            # Names are authoritative even if palette metadata is contradictory.
+            (theme / "colors.toml").write_text('mode = "dark"\n')
+            (theme / "light.mode").touch()
+            self.assertEqual(omarchy_variant(), expected)
+
+    def test_modus_other_modus_cycle_restores_and_keeps_hook(self):
+        self.active_omarchy_theme(THEMES[0])
         self.manager.install_hook()
         hook = Path(self.manager.read_state()["hook"])
+        self.active_omarchy_theme("catppuccin")
+        self.assertTrue(self.manager.apply(None))
+        self.assertEqual(tomlkit.parse(self.config.read_text()).unwrap(),
+                         tomlkit.parse(self.original).unwrap())
         self.assertTrue(hook.exists())
+        self.assertIsNone(self.manager.read_state()["variant"])
+        before = self.config.read_bytes()
+        stamp = self.config.stat().st_mtime_ns
+        self.active_omarchy_theme("gruvbox-light")
+        self.assertFalse(self.manager.apply(None))
+        self.assertEqual(self.config.read_bytes(), before)
+        self.assertEqual(self.config.stat().st_mtime_ns, stamp)
+        self.active_omarchy_theme(THEMES[1])
+        self.assertTrue(self.manager.apply(None))
+        self.assertEqual(self.manager.read_state()["variant"], THEMES[1])
+        self.active_omarchy_theme(THEMES[0])
+        self.assertTrue(self.manager.apply(None))
         self.assertEqual(self.manager.read_state()["variant"], THEMES[0])
-        for mode, expected in [("dark", THEMES[1]), ("light", THEMES[0])]:
-            (theme / "colors.toml").write_text(f'mode = "{mode}"\n')
-            self.manager.apply(None)
-            self.assertEqual(self.manager.read_state()["variant"], expected)
         self.manager.restore()
         self.assertFalse(hook.exists())
+        self.assertEqual(tomlkit.parse(self.config.read_text()).unwrap(),
+                         tomlkit.parse(self.original).unwrap())
 
-    def test_omarchy_light_marker_fallback(self):
-        theme = self.active_omarchy_theme()
-        self.assertEqual(omarchy_variant(), THEMES[1])
+    def test_install_and_uninstall_on_other_theme_do_not_touch_config(self):
+        self.active_omarchy_theme("catppuccin")
+        stamp = self.config.stat().st_mtime_ns
+        self.assertFalse(self.manager.install_hook())
+        self.assertEqual(self.config.read_text(), self.original)
+        self.assertEqual(self.config.stat().st_mtime_ns, stamp)
+        self.assertFalse(list(self.config.parent.glob("config.toml.before-modus.*")))
+        self.assertFalse(self.manager.restore())
+        self.assertEqual(self.config.read_text(), self.original)
+        self.assertEqual(self.config.stat().st_mtime_ns, stamp)
+
+    def test_idle_theme_edits_become_next_restore_baseline(self):
+        self.active_omarchy_theme(THEMES[0])
+        self.manager.install_hook()
+        self.active_omarchy_theme("catppuccin")
+        self.manager.apply(None)
+        edited = self.config.read_text().replace('name = "nord"', 'name = "dracula"')
+        self.config.write_text(edited)
+        self.assertFalse(self.manager.apply(None))
+        self.active_omarchy_theme(THEMES[1])
+        self.manager.apply(None)
+        self.active_omarchy_theme("gruvbox")
+        self.manager.apply(None)
+        self.assertEqual(tomlkit.parse(self.config.read_text()).unwrap(),
+                         tomlkit.parse(edited).unwrap())
+        self.manager.restore()
+        self.assertEqual(tomlkit.parse(self.config.read_text()).unwrap(),
+                         tomlkit.parse(edited).unwrap())
+
+    def test_other_theme_without_config_leaves_it_absent(self):
+        self.config.unlink()
+        self.active_omarchy_theme("nord")
+        self.manager.install_hook()
+        self.assertFalse(self.config.exists())
+        self.manager.restore()
+        self.assertFalse(self.config.exists())
+
+    def test_sync_noop_does_not_reload_server(self):
+        self.active_omarchy_theme("nord")
+        self.manager.install_hook()
+        with patch.object(sys, "argv", ["herdr-modus", "--config", str(self.config), "sync-omarchy"]):
+            with patch("herdr_modus.reload_herdr") as reload:
+                main()
+                reload.assert_not_called()
+
+    def test_active_theme_edits_are_preserved_when_leaving_modus(self):
+        self.active_omarchy_theme(THEMES[0])
+        self.manager.install_hook()
+        edited = self.config.read_text().replace('#ffffff', '#eeeeee')
+        self.config.write_text(edited)
+        self.active_omarchy_theme("catppuccin")
+        with self.assertRaises(ValueError):
+            self.manager.apply(None)
+        self.assertEqual(self.config.read_text(), edited)
+
+    def test_missing_theme_name_does_not_guess_from_light_marker(self):
+        theme = self.active_omarchy_theme(THEMES[0])
         (theme / "light.mode").touch()
-        self.assertEqual(omarchy_variant(), THEMES[0])
+        (theme.parent / "theme.name").unlink()
+        with self.assertRaises(ValueError):
+            self.manager.install_hook()
+        self.assertEqual(self.config.read_text(), self.original)
 
     def test_unrelated_hook_is_preserved_before_config_changes(self):
-        self.active_omarchy_theme("light")
+        self.active_omarchy_theme(THEMES[0])
         hook = self.root / "config/omarchy/hooks/theme-set.d/80-herdr-modus"
         hook.parent.mkdir(parents=True)
         hook.write_text("echo custom\n")

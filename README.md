@@ -34,7 +34,7 @@ The installer copies the package into `~/.local/share/herdr-modus-themes/venv`
 and installs `~/.local/bin/herdr-modus`. Moving the checkout does not break it.
 Pull updates and rerun the installer to update.
 
-## Follow Omarchy's light/dark mode
+## Follow Modus themes in Omarchy
 
 ```sh
 sh install.sh --omarchy
@@ -46,17 +46,23 @@ For an existing installation:
 herdr-modus follow-omarchy
 ```
 
-This applies the current variant and installs one local `theme-set` hook.
-Light desktop themes select Operandi; dark themes select Vivendi. The hook reads
-the active theme's `colors.toml` mode, falling back to Omarchy's `light.mode`
-marker. It does not depend on desktop theme names, change terminal ANSI colours,
-or require any changes to `omarchy-modus-themes`.
+This installs one local `theme-set` hook that reads Omarchy's active `theme.name`:
+
+- `modus-operandi` applies the Operandi palette in Herdr.
+- `modus-vivendi` applies the Vivendi palette in Herdr.
+- Any other desktop theme restores the Herdr theme that was active before Modus.
+
+After restoring, the hook remains installed but leaves Herdr's config untouched
+until one of those two exact Modus names is selected again. Installing the hook
+while another desktop theme is active does not change Herdr's configuration.
+Custom names and tinted variants are not matched. This does not change terminal
+ANSI colours or require changes to `omarchy-modus-themes`.
 
 Herdr 0.8.2 supports a single custom palette; its built-in `auto_switch` setting
-cannot select external palette files. This optional hook applies the appropriate
-custom palette and reloads Herdr after each desktop theme change. Outside
-Omarchy, use the two `apply` commands in your preferred theme-switch automation.
-Manual palette changes remain in effect until the next Omarchy theme switch.
+cannot select external palette files. The hook applies or restores the palette
+and reloads Herdr only when its configuration changes. Manual `apply` commands
+still work independently of the desktop theme; the next Omarchy switch resumes
+the rules above.
 
 ## Configuration and restore
 
@@ -72,7 +78,9 @@ herdr-modus restore
 
 `restore` reinstates the original theme, preserves subsequent unrelated config
 edits, and removes this package's Omarchy hook. It leaves the backup for recovery.
-If you edit the managed `[theme]` yourself, switching and restoration stop rather
+Herdr theme edits made while a non-Modus desktop theme is active are preserved
+and become the restore baseline the next time you enter Modus.
+If you edit the managed `[theme]` while Modus is active, switching and restoration stop rather
 than silently overwrite those edits. Save your edited theme separately and put
 back the last applied palette before using `restore`, or merge your desired
 theme manually using the backup.
