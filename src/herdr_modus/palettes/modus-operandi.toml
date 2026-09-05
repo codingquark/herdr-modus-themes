@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Modus colours: Protesilaos Stavrou; copyright 2019-2026 FSF, Inc.
+# Herdr adaptation: Dhavan Vaidya, 2026. See README.md for provenance.
+[theme.custom]
+panel_bg = "#ffffff"
+sidebar_bg = "#ffffff"
+text = "#000000"
+active_row_bg = "#f2f2f2"
+selection_bg = "#e0e0e0"
+surface0 = "#f2f2f2"
+surface1 = "#e0e0e0"
+surface_dim = "#9f9f9f"
+overlay0 = "#333333"
+overlay1 = "#000000"
+subtext0 = "#333333"
+accent = "#0031a9"
+blue = "#0031a9"
+mauve = "#721045"
+green = "#006800"
+yellow = "#6f5500"
+red = "#a60000"
+teal = "#005e8b"
+peach = "#884900"

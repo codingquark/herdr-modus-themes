@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "herdr-modus-themes"
+version = "0.1.0"
+description = "Modus Operandi and Modus Vivendi palettes for Herdr"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "GPL-3.0-or-later"
+authors = [{name = "Dhavan Vaidya"}]
+dependencies = ["tomlkit>=0.13.3,<1"]
+
+[project.scripts]
+herdr-modus = "herdr_modus:main"
+
+[project.urls]
+Repository = "https://github.com/codingquark/herdr-modus-themes"
+
+[tool.setuptools.package-data]
+herdr_modus = ["palettes/*.toml"]
